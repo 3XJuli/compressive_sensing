@@ -1,1 +1,6 @@
-compsensing_dip/
+*.pyc
+wandb_key
+data/archive.zip
+data/*.csv
+output/*
+wandb/*

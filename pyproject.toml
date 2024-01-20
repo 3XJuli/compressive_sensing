@@ -13,6 +13,7 @@ torchaudio = {version = "^2.1.2+cpu", source = "pytorch-cpu-src"}
 pandas = "^2.2.0"
 matplotlib = "^3.8.2"
 wandb = "^0.16.2"
+scipy = "^1.11.4"
 
 [[tool.poetry.source]]
 name = "pytorch-cpu-src"

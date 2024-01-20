@@ -1,4 +1,4 @@
-from dataset import MNISTDataset
+from dataset import MNISTDatasetFlattened
 from train_eval import train, evaluate
 import torch.nn.functional as F
 
@@ -51,7 +51,7 @@ def generate_during_training(model, num_imgs, samples, device):
 
 
 def generate_measurement_matrix(N, n):
-    return np.sqrt(1.0 / n) * np.random.randn(N, n)
+    return torch.randn(n, N, dtype=torch.float64) * torch.sqrt(torch.tensor(1.0 / N))
 
 
 def main():
@@ -68,7 +68,7 @@ def main():
     generate_n_meshes = 3
 
     device = "auto"
-    log_wandb = 0
+    log_wandb = 1
 
     if device == "auto":
         if torch.cuda.is_available():
@@ -108,10 +108,8 @@ def main():
     # number of measurements
     n_measurements = 350
 
-    train_dataset = MNISTDataset(
-        train=True, shuffle=True, n_measurements=n_measurements
-    )
-    val_dataset = MNISTDataset(train=False, shuffle=False)
+    train_dataset = MNISTDatasetFlattened(train=True, shuffle=True, n_measurements=3000)
+    val_dataset = MNISTDatasetFlattened(train=False, shuffle=False)
 
     train_dl = DataLoader(train_dataset, batch_size=BS, shuffle=True)
     val_dl = DataLoader(val_dataset, batch_size=BS, shuffle=False)
@@ -122,7 +120,7 @@ def main():
 
     measurement_matrix = generate_measurement_matrix(N, n_measurements)
 
-    tau = 1 / torch.nn.utils.spectral_norm(measurement_matrix)
+    tau = 1 / (torch.linalg.matrix_norm(measurement_matrix, ord=2) ** 2)
     lamb = 0.5
 
     print(f"N: {N}, n: {n_measurements}")
@@ -149,9 +147,10 @@ def main():
             train_dl,
             optimizer,
             loss,
+            measurement_matrix,
             device,
         )
-        val_loss = evaluate(model, val_dl, loss, device)
+        val_loss = evaluate(model, val_dl, loss, measurement_matrix, device)
         # if log_wandb and epoch % generate_every_n_epochs == 0:
         #     generate_during_training(model, generate_n_meshes, samples, device)
         end_time = time.time()

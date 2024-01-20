@@ -1,5 +1,6 @@
 import torch.nn as nn
 import torch
+from scipy.stats import ortho_group
 
 
 class ISTA_RNN(nn.Module):
@@ -14,9 +15,9 @@ class ISTA_RNN(nn.Module):
             raise ValueError("layers must be greater than 0")
         self.measurement_matrix = measurement_matrix.to(device)
 
-        self.mm_spectral_norm = torch.nn.utils.spectral_norm(self.measurement_matrix)
+        self.mm_spectral_norm = torch.linalg.matrix_norm(self.measurement_matrix, ord=2)
 
-        self.identity_matrix = torch.eye(self.measurement_matrix.shape[0]).to(device)
+        self.identity_matrix = torch.eye(self.measurement_matrix.shape[1]).to(device)
 
         self.lamb = lamb
         self.tau = tau
@@ -25,18 +26,26 @@ class ISTA_RNN(nn.Module):
         self.b_out = b_out
 
         if (tau * torch.pow(self.mm_spectral_norm, 2)) > 1:
-            print("Warning: Convergence is not guaranteed.")
+            print(
+                "Warning: Convergence is not guaranteed. (tau * mm_spectral_norm^2) = {0} > 1".format(
+                    tau * torch.pow(self.mm_spectral_norm, 2)
+                )
+            )
 
-        random_matrix = torch.randn(self.measurement_matrix.shape)
+        random_matrix = torch.randn(
+            (self.measurement_matrix.shape[1], self.measurement_matrix.shape[1])
+        )
 
-        svd = torch.svd(random_matrix)
+        m = ortho_group.rvs(self.measurement_matrix.shape[1])
 
-        random_orthogonal_matrix = svd.U @ torch.diag(svd.S)
+        random_matrix = torch.tensor(m, dtype=torch.float64)
 
-        self.dictionary = nn.Parameter(random_orthogonal_matrix).to(device)
+        self.dictionary = nn.Parameter(random_matrix, requires_grad=True)
 
     def shrink(self, x):
-        return torch.sign(x) * torch.max(torch.abs(x) - self.lamb, torch.zeros_like(x))
+        return torch.sign(x) * torch.max(
+            torch.abs(x) - self.shrinkage_factor, torch.zeros_like(x)
+        )
 
     def sigma(self, x):
         return self.b_out * x / torch.norm(x) if torch.norm(x) > self.b_out else x
