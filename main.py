@@ -34,6 +34,7 @@ def epoch_time(start_time, end_time):
 
 
 def generate_during_training(model, num_imgs, samples, device):
+    model.eval()
     if samples is None:
         for i in range(num_imgs):
             latent = model.sample2D(1)
