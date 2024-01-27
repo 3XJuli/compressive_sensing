@@ -35,6 +35,7 @@ def epoch_time(start_time, end_time):
 
 
 def generate_during_training(model, samples, epoch=None):
+    model.eval()
     for X, Y in samples:
         X_hat = model(Y)
         true_img = wandb.Image(X.view(28, 28), caption="original sample")
