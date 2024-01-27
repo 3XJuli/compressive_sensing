@@ -5,61 +5,78 @@ import torch.nn.functional as F
 
 def train(model, iterator, optimizer, loss, measurement_matrix, device):
     epoch_loss = 0
+    epoch_mae_loss = 0
+    epoch_mse_loss = 0
 
     model.train()
     optimizer.zero_grad()  # clear gradients first
     for i, batch in enumerate(
         iterator
     ):  # batch is simply a batch of ci-matricies as a tensor as x and y are the same
-        start = time.time()
         # attention_mask, base_ids are already on device
-        X = batch
-
-        X = X.view(X.shape[0], X.shape[-1], -1).to(device)
-
-        # encode
-        Y = measurement_matrix @ X.double()
-
+        X, Y = batch
         # decode
         predictions = model(Y)
 
-        loss_value = loss(
+        mse_loss = loss(
             predictions.view(-1, 28 * 28),
             X.view(-1, 28 * 28),
         )
+
+        loss_value = mse_loss  # + 0.001 * orthogonality_regularization
 
         loss_value.backward()
         optimizer.step()
         optimizer.zero_grad()
 
-        epoch_loss += loss_value.item()
-        end = time.time()
+        # print(model.dictionary.norm(p="fro"))
 
-    return epoch_loss / len(iterator)
+        epoch_loss += loss_value.item()
+
+        epoch_mse_loss += mse_loss.item()
+
+        epoch_mae_loss += F.l1_loss(
+            predictions.view(-1, 28 * 28), X.view(-1, 28 * 28)
+        ).item()
+
+    return (
+        epoch_loss / len(iterator),
+        epoch_mae_loss / len(iterator),
+        epoch_mse_loss / len(iterator),
+    )
 
 
 def evaluate(model, iterator, loss, measurement_matrix, device):
     epoch_loss = 0
+    epoch_mae_loss = 0
+    epoch_mse_loss = 0
 
     model.eval()
     for i, batch in enumerate(
         iterator
     ):  # batch is simply a batch of ci-matricies as a tensor as x and y are the same
         # attention_mask, base_ids are already on device
-        X = batch
-
-        X = X.view(X.shape[0], X.shape[-1], -1).to(device)
-
-        # encode
-        Y = measurement_matrix @ X.double()
-
+        X, Y = batch
+        # decode
         predictions = model(Y)
 
-        loss_value = loss(
+        mse_loss = loss(
             predictions.view(-1, 28 * 28),
             X.view(-1, 28 * 28),
         )
 
-        epoch_loss = loss_value.item()
+        loss_value = mse_loss
 
-    return epoch_loss / len(iterator)
+        epoch_loss += loss_value.item()
+
+        epoch_mse_loss += mse_loss.item()
+
+        epoch_mae_loss += F.l1_loss(
+            predictions.view(-1, 28 * 28), X.view(-1, 28 * 28)
+        ).item()
+
+    return (
+        epoch_loss / len(iterator),
+        epoch_mae_loss / len(iterator),
+        epoch_mse_loss / len(iterator),
+    )

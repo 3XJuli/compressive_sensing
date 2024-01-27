@@ -1,6 +1,7 @@
 import torch.nn as nn
 import torch
 from scipy.stats import ortho_group
+from torch.nn.utils.parametrizations import orthogonal
 
 
 class ISTA_RNN(nn.Module):
@@ -38,40 +39,53 @@ class ISTA_RNN(nn.Module):
 
         m = ortho_group.rvs(self.measurement_matrix.shape[1])
 
-        random_matrix = torch.tensor(m, dtype=torch.float64)
+        random_matrix = torch.tensor(m, dtype=torch.float32)
 
-        self.dictionary = nn.Parameter(random_matrix, requires_grad=True)
+        self.dictionary_layer = orthogonal(
+            nn.Linear(
+                self.measurement_matrix.shape[1],
+                self.measurement_matrix.shape[1],
+                bias=False,
+                dtype=torch.float32,
+            )
+        )
+
+        self.dictionary_layer.weight.data = random_matrix
 
     def shrink(self, x):
         return torch.sign(x) * torch.max(
             torch.abs(x) - self.shrinkage_factor, torch.zeros_like(x)
         )
 
+    def shrink_relu(self, x):
+        return torch.sign(x) * torch.relu(torch.abs(x) - self.shrinkage_factor)
+
     def sigma(self, x):
         return self.b_out * x / torch.norm(x) if torch.norm(x) > self.b_out else x
 
     def loss(self, x, x_true):
-        return ((x - x_true) ** 2).mean() + torch.norm(
-            self.identity_matrix - self.dictionary.t() @ self.dictionary, p="fro"
-        )
+        return ((x - x_true) ** 2).mean()
 
     def forward(self, y):
-        f_i = self.shrink(
-            self.tau * (self.measurement_matrix @ self.dictionary).t() @ y
+        f_i = self.shrink_relu(
+            self.tau * (self.measurement_matrix @ self.dictionary_layer.weight).t() @ y
         )
 
         for i in range(1, self.layers):
-            f_i = self.shrink(
+            # perform ISTA step
+            f_i = self.shrink_relu(
                 (
                     self.identity_matrix
                     - self.tau
-                    * self.dictionary.t()
+                    * self.dictionary_layer.weight.t()
                     @ self.measurement_matrix.t()
                     @ self.measurement_matrix
-                    @ self.dictionary
+                    @ self.dictionary_layer.weight
                 )
                 @ f_i
-                + self.tau * (self.measurement_matrix @ self.dictionary).t() @ y
+                + self.tau
+                * (self.measurement_matrix @ self.dictionary_layer.weight).t()
+                @ y
             )
 
-        return self.sigma(f_i)
+        return self.sigma(self.dictionary_layer.weight @ f_i)
